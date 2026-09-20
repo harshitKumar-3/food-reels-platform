@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import API from '../utils/api';
 
 const ReelFeed = ({
   items = [],
@@ -8,6 +9,13 @@ const ReelFeed = ({
   emptyMessage = 'No videos yet.'
 }) => {
   const videoRefs = useRef(new Map());
+
+  const [activeCommentFoodId, setActiveCommentFoodId] = useState(null);
+  const [comments, setComments] = useState({});
+  const [commentText, setCommentText] = useState('');
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [postingComment, setPostingComment] = useState(false);
+  const [commentError, setCommentError] = useState('');
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -43,6 +51,72 @@ const ReelFeed = ({
     videoRefs.current.set(id, el);
   };
 
+  const openComments = async (foodId) => {
+    setActiveCommentFoodId(foodId);
+    setCommentText('');
+    setCommentError('');
+    setLoadingComments(true);
+
+    try {
+      const response = await API.get(`/api/food/comments/${foodId}`);
+
+      setComments((prev) => ({
+        ...prev,
+        [foodId]: response.data.comments || []
+      }));
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      setCommentError('Unable to load comments.');
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const closeComments = () => {
+    setActiveCommentFoodId(null);
+    setCommentText('');
+    setCommentError('');
+  };
+
+  const submitComment = async (e) => {
+    e.preventDefault();
+
+    if (!commentText.trim() || !activeCommentFoodId) return;
+
+    setPostingComment(true);
+    setCommentError('');
+
+    try {
+      const response = await API.post('/api/food/comments', {
+        foodId: activeCommentFoodId,
+        text: commentText.trim()
+      });
+
+      const newComment = response.data.comment;
+
+      setComments((prev) => ({
+        ...prev,
+        [activeCommentFoodId]: [
+          newComment,
+          ...(prev[activeCommentFoodId] || [])
+        ]
+      }));
+
+      setCommentText('');
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      setCommentError(
+        error?.response?.data?.message || 'Unable to post comment.'
+      );
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const activeComments = activeCommentFoodId
+    ? comments[activeCommentFoodId] || []
+    : [];
+
   return (
     <div className="reels-page">
       <div className="reels-feed" role="list">
@@ -57,6 +131,12 @@ const ReelFeed = ({
           const foodPartner = item.foodPartner;
           const foodPartnerId =
             foodPartner?._id || foodPartner;
+
+          const currentComments = comments[item._id];
+          const commentCount =
+            currentComments?.length ??
+            item.commentsCount ??
+            0;
 
           return (
             <section
@@ -155,10 +235,15 @@ const ReelFeed = ({
 
                   {/* Comments */}
                   <div className="reel-action-group">
-                    <button
-                      className="reel-action"
-                      aria-label="Comments"
-                    >
+                   <button
+                        type="button"
+                        className="reel-action"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openComments(item._id);
+                        }}
+                        aria-label="Comments"
+                      >
                       <svg
                         width="22"
                         height="22"
@@ -174,10 +259,7 @@ const ReelFeed = ({
                     </button>
 
                     <div className="reel-action__count">
-                      {item.commentsCount ??
-                        (Array.isArray(item.comments)
-                          ? item.comments.length
-                          : 0)}
+                      {commentCount}
                     </div>
                   </div>
 
@@ -212,13 +294,91 @@ const ReelFeed = ({
                   )}
 
                 </div>
-
               </div>
             </section>
           );
         })}
-
       </div>
+
+      {/* Comments Modal */}
+      {activeCommentFoodId && (
+        <div
+          className="comments-modal"
+          onClick={closeComments}
+        >
+          <div
+            className="comments-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="comments-header">
+              <h2>Comments</h2>
+
+              <button
+                className="comments-close"
+                onClick={closeComments}
+                aria-label="Close comments"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="comments-list">
+              {loadingComments ? (
+                <p className="comments-status">
+                  Loading comments...
+                </p>
+              ) : activeComments.length === 0 ? (
+                <p className="comments-status">
+                  No comments yet. Be the first to comment!
+                </p>
+              ) : (
+                activeComments.map((comment) => (
+                  <div
+                    key={comment._id}
+                    className="comment-item"
+                  >
+                    <div className="comment-user">
+                      {comment.user?.fullName || 'User'}
+                    </div>
+
+                    <div className="comment-text">
+                      {comment.text}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {commentError && (
+              <p className="comment-error">
+                {commentError}
+              </p>
+            )}
+
+            <form
+              className="comment-form"
+              onSubmit={submitComment}
+            >
+              <input
+                type="text"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Write a comment..."
+                maxLength={500}
+              />
+
+              <button
+                type="submit"
+                disabled={
+                  postingComment || !commentText.trim()
+                }
+              >
+                {postingComment ? 'Posting...' : 'Post'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

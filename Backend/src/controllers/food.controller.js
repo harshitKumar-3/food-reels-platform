@@ -1,7 +1,9 @@
 const foodModel = require("../models/food.model")
 const foodPartnerModel = require("../models/foodpartner.model")
 const storageService = require("../services/storage.service")
+const commentModel = require("../models/comment.model");
 const {v4: uuid} = require("uuid")
+
 
 async function createFood(req,res){
     try {
@@ -206,5 +208,77 @@ module.exports = {
     getFoodPartnerFoods,
     likeFood,
     saveFood,
-    getSavedFoods
+    getSavedFoods,
+    addComment,
+    getComments
+}
+
+async function addComment(req, res) {
+    try {
+        const { foodId, text } = req.body;
+        const userId = req.user._id;
+
+        if (!foodId || !text || !text.trim()) {
+            return res.status(400).json({
+                message: "Food ID and comment text are required"
+            });
+        }
+
+        const food = await foodModel.findById(foodId);
+
+        if (!food) {
+            return res.status(404).json({
+                message: "Food not found"
+            });
+        }
+
+        const comment = await commentModel.create({
+            text: text.trim(),
+            user: userId,
+            food: foodId
+        });
+
+        food.commentsCount += 1;
+        await food.save();
+
+        const populatedComment = await commentModel
+            .findById(comment._id)
+            .populate("user", "fullName");
+
+        res.status(201).json({
+            message: "Comment added successfully",
+            comment: populatedComment
+        });
+
+    } catch (error) {
+        console.error("Error adding comment:", error);
+
+        res.status(500).json({
+            message: "Server error"
+        });
+    }
+}
+
+
+async function getComments(req, res) {
+    try {
+        const { foodId } = req.params;
+
+        const comments = await commentModel
+            .find({ food: foodId })
+            .populate("user", "fullName")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            message: "Comments fetched successfully",
+            comments
+        });
+
+    } catch (error) {
+        console.error("Error fetching comments:", error);
+
+        res.status(500).json({
+            message: "Server error"
+        });
+    }
 }

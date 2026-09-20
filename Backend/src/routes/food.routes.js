@@ -42,4 +42,21 @@ router.get(
   foodController.getFoodPartnerDetails
 );
 
+/* POST /api/food/comments [protected] */
+
+router.post(
+    "/comments",
+    authMiddleware.authUserMiddleware,
+    foodController.addComment
+);
+
+/* GET /api/food/comments/:foodId [protected] */
+
+router.get(
+    "/comments/:foodId",
+    authMiddleware.authUserMiddleware,
+    foodController.getComments
+);
+
 module.exports = router;
+
