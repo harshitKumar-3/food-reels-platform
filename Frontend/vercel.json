@@ -1,0 +1,8 @@
+{
+  "redirects": [
+    { "source": "/", "destination": "/user/register" }
+  ],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
