@@ -34,12 +34,23 @@ async function createFood(req,res){
     }
 }
 
-async function getFoodItems(req,res){
-    const foodItems = await foodModel.find({})
-    res.status(200).json({
-        message: "Food items fetched successfully",
-        foodItems
-    })
+async function getFoodItems(req, res) {
+    try {
+        const foodItems = await foodModel
+            .find({})
+            .populate("foodPartner", "name address");
+
+        res.status(200).json({
+            message: "Food items fetched successfully",
+            foodItems
+        });
+    } catch (error) {
+        console.error("Error fetching food items:", error);
+
+        res.status(500).json({
+            message: "Server error while fetching food items"
+        });
+    }
 }
 
 async function getFoodPartnerDetails(req, res) {
