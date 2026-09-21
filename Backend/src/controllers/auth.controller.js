@@ -28,7 +28,11 @@ async function registerUser(req, res) {
       password: hashedPassword,
     });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+    const token = jwt.sign(
+      { id: user._id, role: "user" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
     res.cookie("token", token, cookieOptions);
 
@@ -64,7 +68,11 @@ async function loginUser(req, res) {
       });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+    const token = jwt.sign(
+      { id: user._id, role: "user" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
     res.cookie("token", token, cookieOptions);
 
@@ -111,8 +119,9 @@ async function registerFoodPartner(req, res) {
     });
 
     const token = jwt.sign(
-      { id: foodPartner._id },
-      process.env.JWT_SECRET
+      { id: foodPartner._id, role: "food-partner" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
     );
 
     res.cookie("token", token, cookieOptions);
@@ -153,8 +162,9 @@ async function loginFoodPartner(req, res) {
     }
 
     const token = jwt.sign(
-      { id: foodPartner._id },
-      process.env.JWT_SECRET
+      { id: foodPartner._id, role: "food-partner" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
     );
 
     res.cookie("token", token, cookieOptions);
@@ -204,10 +214,31 @@ async function getFoodPartnerProfile(req, res) {
   }
 }
 
+async function getCurrentUser(req, res) {
+  try {
+    const user = req.user;
+
+    res.status(200).json({
+      message: "Current user profile fetched successfully",
+      user: {
+        _id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching current user:", error);
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+}
+
 module.exports = {
   registerUser,
   loginUser,
   logoutUser,
+  getCurrentUser,
   registerFoodPartner,
   loginFoodPartner,
   logoutFoodPartner,

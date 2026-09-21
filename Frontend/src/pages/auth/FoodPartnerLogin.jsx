@@ -1,7 +1,7 @@
 import React from "react";
 import "../../styles/auth-shared.css";
 import API from "../../utils/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 const FoodPartnerLogin = () => {
   const navigate = useNavigate();
@@ -82,7 +82,7 @@ const FoodPartnerLogin = () => {
 
         <div className="auth-alt-action">
           New partner?{" "}
-          <a href="/food-partner/register">Create an account</a>
+          <Link to="/food-partner/register">Create an account</Link>
         </div>
       </div>
     </div>

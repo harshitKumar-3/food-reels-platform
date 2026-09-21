@@ -3,8 +3,18 @@ const userModel = require("../models/user.model")
 
 const jwt = require("jsonwebtoken")
 
+function getTokenFromRequest(req) {
+    if (req.cookies && req.cookies.token) {
+        return req.cookies.token;
+    }
+    if (req.headers && req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+        return req.headers.authorization.split(" ")[1];
+    }
+    return null;
+}
+
 async function authFoodPartnerMiddleware(req,res,next){
-    const token = req.cookies.token;
+    const token = getTokenFromRequest(req);
 
     if(!token)
     {
@@ -16,7 +26,12 @@ async function authFoodPartnerMiddleware(req,res,next){
     try
     {
        const decoded =  jwt.verify(token,process.env.JWT_SECRET)
-      
+
+       if (decoded.role && decoded.role !== "food-partner") {
+         return res.status(401).json({
+           message: "Access restricted to food partners",
+         });
+       }
 
        const foodPartner = await foodPartnerModel.findById(decoded.id);
 
@@ -38,7 +53,7 @@ async function authFoodPartnerMiddleware(req,res,next){
 }
 
 async function authUserMiddleware(req, res, next) {
-    const token = req.cookies.token;
+    const token = getTokenFromRequest(req);
 
     if (!token) {
         return res.status(401).json({
@@ -48,6 +63,12 @@ async function authUserMiddleware(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        if (decoded.role && decoded.role !== "user") {
+            return res.status(401).json({
+                message: "Access restricted to users",
+            });
+        }
 
         const user = await userModel.findById(decoded.id);
 

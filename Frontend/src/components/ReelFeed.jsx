@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../utils/api';
+import OrderModal from './OrderModal';
 
 const ReelFeed = ({
   items = [],
@@ -16,6 +17,7 @@ const ReelFeed = ({
   const [loadingComments, setLoadingComments] = useState(false);
   const [postingComment, setPostingComment] = useState(false);
   const [commentError, setCommentError] = useState('');
+  const [orderFood, setOrderFood] = useState(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -293,6 +295,22 @@ const ReelFeed = ({
                     </Link>
                   )}
 
+                  {/* Order Now */}
+                  {item._id && (
+                    <button
+                      type="button"
+                      className="reel-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOrderFood(item);
+                      }}
+                      aria-label="Order now"
+                      style={{ marginTop: '6px', cursor: 'pointer' }}
+                    >
+                      Order Now
+                    </button>
+                  )}
+
                 </div>
               </div>
             </section>
@@ -378,6 +396,15 @@ const ReelFeed = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Order Modal */}
+      {orderFood && (
+        <OrderModal
+          food={orderFood}
+          onClose={() => setOrderFood(null)}
+          onSuccess={() => setOrderFood(null)}
+        />
       )}
     </div>
   );
