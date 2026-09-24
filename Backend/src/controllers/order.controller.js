@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const orderModel = require("../models/order.model");
 const foodModel = require("../models/food.model");
 
@@ -12,12 +13,43 @@ async function createOrder(req, res) {
       });
     }
 
+    if (typeof deliveryAddress !== 'string' || typeof contactPhone !== 'string') {
+      return res.status(400).json({
+        message: "deliveryAddress and contactPhone must be valid text strings",
+      });
+    }
+
     const trimmedAddress = deliveryAddress.trim();
     const trimmedPhone = contactPhone.trim();
 
     if (!trimmedAddress || !trimmedPhone) {
       return res.status(400).json({
         message: "deliveryAddress and contactPhone cannot be empty",
+      });
+    }
+
+    if (trimmedPhone.replace(/\D/g, '').length < 9) {
+      return res.status(400).json({
+        message: "Invalid phone number format",
+      });
+    }
+
+    // Validate quantity if provided
+    let orderQuantity = 1;
+    if (quantity !== undefined && quantity !== null) {
+      const numQty = Number(quantity);
+      if (isNaN(numQty) || !Number.isInteger(numQty) || numQty < 1) {
+        return res.status(400).json({
+          message: "Quantity must be an integer greater than or equal to 1",
+        });
+      }
+      orderQuantity = numQty;
+    }
+
+    // Validate foodId format
+    if (!mongoose.Types.ObjectId.isValid(foodId)) {
+      return res.status(400).json({
+        message: "Invalid food ID format",
       });
     }
 
@@ -34,7 +66,27 @@ async function createOrder(req, res) {
       });
     }
 
-    const orderQuantity = Math.max(1, parseInt(quantity, 10) || 1);
+    // Duplicate order submission protection:
+    // If an identical order from this user for the same food item, quantity, and address
+    // was placed within the last 5 seconds, prevent duplicate creation and return the existing order
+    const recentDuplicate = await orderModel.findOne({
+      user: userId,
+      food: food._id,
+      quantity: orderQuantity,
+      deliveryAddress: trimmedAddress,
+      status: "Placed",
+      createdAt: { $gte: new Date(Date.now() - 5000) },
+    })
+      .populate("food", "name video description")
+      .populate("user", "fullName email")
+      .populate("foodPartner", "name address phone contactName");
+
+    if (recentDuplicate) {
+      return res.status(200).json({
+        message: "Order placed successfully",
+        order: recentDuplicate,
+      });
+    }
 
     const order = await orderModel.create({
       user: userId,
@@ -43,7 +95,7 @@ async function createOrder(req, res) {
       quantity: orderQuantity,
       deliveryAddress: trimmedAddress,
       contactPhone: trimmedPhone,
-      status: "Preparing",
+      status: "Placed",
     });
 
     const populatedOrder = await orderModel
@@ -120,18 +172,13 @@ async function updateOrderStatus(req, res) {
     const { status } = req.body;
     const partnerId = req.foodPartner._id;
 
-    const validStatuses = ["Delivered", "Cancelled"];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
-        message: "Status can only be updated to Delivered or Cancelled",
-      });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid order ID format" });
     }
 
     const order = await orderModel.findById(id);
     if (!order) {
-      return res.status(404).json({
-        message: "Order not found",
-      });
+      return res.status(404).json({ message: "Order not found" });
     }
 
     // Enforce ownership: partner can only update their own orders
@@ -141,10 +188,26 @@ async function updateOrderStatus(req, res) {
       });
     }
 
-    // Constraint: Once Delivered or Cancelled, cannot be changed back
-    if (order.status !== "Preparing") {
+    // ── Allowed transition map ────────────────────────────────────────────
+    // Placed      → Preparing
+    // Preparing   → Delivered | Cancelled
+    // Delivered   → (terminal — no further changes)
+    // Cancelled   → (terminal — no further changes)
+    const allowedTransitions = {
+      Placed:    ["Preparing"],
+      Preparing: ["Delivered", "Cancelled"],
+    };
+
+    const allowed = allowedTransitions[order.status];
+    if (!allowed) {
       return res.status(400).json({
         message: `Order is already ${order.status} and cannot be modified`,
+      });
+    }
+
+    if (!status || !allowed.includes(status)) {
+      return res.status(400).json({
+        message: `Cannot transition from ${order.status} to ${status}. Allowed: ${allowed.join(", ")}`,
       });
     }
 
@@ -157,7 +220,7 @@ async function updateOrderStatus(req, res) {
       .populate("user", "fullName email")
       .populate("foodPartner", "name address phone contactName");
 
-    // Real-time: notify the customer that their order status was updated
+    // Real-time: notify the customer
     const io = req.app.get("io");
     if (io) {
       io.to(`user_${order.user.toString()}`).emit("order_status_updated", populatedOrder);
@@ -169,11 +232,10 @@ async function updateOrderStatus(req, res) {
     });
   } catch (error) {
     console.error("Error updating order status:", error);
-    res.status(500).json({
-      message: "Server error while updating order status",
-    });
+    res.status(500).json({ message: "Server error while updating order status" });
   }
 }
+
 
 module.exports = {
   createOrder,

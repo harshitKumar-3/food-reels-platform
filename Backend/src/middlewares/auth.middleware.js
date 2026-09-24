@@ -28,7 +28,7 @@ async function authFoodPartnerMiddleware(req,res,next){
        const decoded =  jwt.verify(token,process.env.JWT_SECRET)
 
        if (decoded.role && decoded.role !== "food-partner") {
-         return res.status(401).json({
+         return res.status(403).json({
            message: "Access restricted to food partners",
          });
        }
@@ -42,6 +42,7 @@ async function authFoodPartnerMiddleware(req,res,next){
        }
 
        req.foodPartner = foodPartner;
+       req.user = foodPartner;
        next();
 
     }catch(err)
@@ -65,7 +66,7 @@ async function authUserMiddleware(req, res, next) {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         if (decoded.role && decoded.role !== "user") {
-            return res.status(401).json({
+            return res.status(403).json({
                 message: "Access restricted to users",
             });
         }
@@ -89,7 +90,76 @@ async function authUserMiddleware(req, res, next) {
     }
 }
 
+async function authAnyMiddleware(req, res, next) {
+    const token = getTokenFromRequest(req);
+
+    if (!token) {
+        return res.status(401).json({
+            message: "please login first"
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        if (decoded.role === "food-partner") {
+            const foodPartner = await foodPartnerModel.findById(decoded.id);
+            if (!foodPartner) {
+                return res.status(401).json({ message: "Food partner not found" });
+            }
+            req.foodPartner = foodPartner;
+            req.user = foodPartner; // alias for common controllers
+        } else if (decoded.role === "user") {
+            const user = await userModel.findById(decoded.id);
+            if (!user) {
+                return res.status(401).json({ message: "User not found" });
+            }
+            req.user = user;
+        } else {
+            return res.status(401).json({ message: "Invalid role" });
+        }
+
+        next();
+
+    } catch (err) {
+        return res.status(401).json({
+            message: "Invalid token"
+        });
+    }
+}
+
+async function optionalAuthMiddleware(req, res, next) {
+    const token = getTokenFromRequest(req);
+
+    if (!token) {
+        return next();
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        if (decoded.role === "food-partner") {
+            const foodPartner = await foodPartnerModel.findById(decoded.id);
+            if (foodPartner) {
+                req.foodPartner = foodPartner;
+                req.user = foodPartner;
+            }
+        } else if (decoded.role === "user") {
+            const user = await userModel.findById(decoded.id);
+            if (user) {
+                req.user = user;
+            }
+        }
+    } catch (err) {
+        // Token is invalid/expired - continue as unauthenticated guest
+    }
+
+    next();
+}
+
 module.exports = {
     authFoodPartnerMiddleware,
-    authUserMiddleware
+    authUserMiddleware,
+    authAnyMiddleware,
+    optionalAuthMiddleware
 }

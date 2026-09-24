@@ -2,7 +2,10 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../utils/api";
 import socket from "../../utils/socket";
-import "../../styles/reels.css";
+import "../../styles/orders.css";
+
+// Status timeline steps in order
+const STATUS_STEPS = ["Placed", "Preparing", "Delivered"];
 
 const UserOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -51,75 +54,65 @@ const UserOrders = () => {
     };
   }, [navigate]);
 
-  const getStatusBadge = (status) => {
+  const getStatusClass = (status) => {
     switch (status) {
-      case "Delivered":
-        return {
-          label: "Delivered",
-          bg: "rgba(34, 197, 94, 0.15)",
-          color: "#22c55e",
-          border: "1px solid rgba(34, 197, 94, 0.3)",
-        };
-      case "Cancelled":
-        return {
-          label: "Cancelled",
-          bg: "rgba(239, 68, 68, 0.15)",
-          color: "#ef4444",
-          border: "1px solid rgba(239, 68, 68, 0.3)",
-        };
+      case "Delivered": return "order-status-badge order-status-badge--delivered";
+      case "Cancelled": return "order-status-badge order-status-badge--cancelled";
+      case "Placed":    return "order-status-badge order-status-badge--placed";
       case "Preparing":
-      default:
-        return {
-          label: "Preparing",
-          bg: "rgba(234, 179, 8, 0.15)",
-          color: "#eab308",
-          border: "1px solid rgba(234, 179, 8, 0.3)",
-        };
+      default:          return "order-status-badge order-status-badge--preparing";
     }
   };
 
+  // Build timeline data for a given order
+  const getTimeline = (order) => {
+    if (order.status === "Cancelled") {
+      const cancelledSteps = ["Placed", "Preparing", "Cancelled"];
+      return cancelledSteps.map((step, i) => {
+        let state;
+        if (step === "Cancelled") state = "cancelled";
+        else if (step === "Placed" || step === "Preparing") state = "done";
+        else state = "pending";
+        return { label: step, state };
+      });
+    }
+    // Normal flow: Placed → Preparing → Delivered
+    const currentIdx = STATUS_STEPS.indexOf(order.status);
+    return STATUS_STEPS.map((step, i) => ({
+      label: step,
+      // steps BEFORE current are done, current is active, future are pending
+      state: i < currentIdx ? "done" : i === currentIdx ? "active" : "pending",
+    }));
+  };
+
+  // The line between step[i] and step[i+1] is "done" if step[i+1] has been reached
+  const lineStateFor = (timeline, idx) => {
+    const nextStep = timeline[idx + 1];
+    if (!nextStep) return "pending";
+    return nextStep.state === "pending" ? "pending" : "done";
+  };
+
   return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        backgroundColor: "var(--color-bg, #0f172a)",
-        color: "var(--color-text, #f1f5f9)",
-        padding: "24px 16px 80px",
-        maxWidth: "600px",
-        margin: "0 auto",
-        boxSizing: "border-box",
-      }}
-    >
-      <header style={{ marginBottom: "24px" }}>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: "700", margin: "0 0 6px" }}>My Orders</h1>
-        <p style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-text-secondary, #94a3b8)" }}>
+    <div className="orders-page">
+      <header className="orders-page-header">
+        <h1 className="orders-page-title">My Orders</h1>
+        <p className="orders-page-subtitle">
           Track real-time status of your food orders
         </p>
       </header>
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8" }}>
-          Loading your orders...
-        </div>
+        <div className="orders-loading">Loading your orders…</div>
       ) : orders.length === 0 ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "50px 20px",
-            background: "var(--color-surface, #1e293b)",
-            borderRadius: "16px",
-            border: "1px solid var(--color-border, #334155)",
-          }}
-        >
-          <p style={{ fontSize: "1.1rem", fontWeight: "600", margin: "0 0 8px" }}>No orders placed yet</p>
-          <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: 0 }}>
+        <div className="orders-empty">
+          <p className="orders-empty-title">No orders placed yet</p>
+          <p className="orders-empty-subtitle">
             Explore food reels and tap "Order Now" on meals you'd like to try!
           </p>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div className="orders-list">
           {orders.map((order) => {
-            const badge = getStatusBadge(order.status);
             const food = order.food || {};
             const partner = order.foodPartner || {};
             const dateStr = order.createdAt
@@ -130,72 +123,60 @@ const UserOrders = () => {
                   minute: "2-digit",
                 })
               : "";
+            const timeline = getTimeline(order);
 
             return (
-              <div
-                key={order._id}
-                style={{
-                  background: "var(--color-surface, #1e293b)",
-                  borderRadius: "14px",
-                  padding: "16px",
-                  border: "1px solid var(--color-border, #334155)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div key={order._id} className="order-card">
+                {/* Header: food name + status badge */}
+                <div className="order-card-header">
                   <div>
-                    <div style={{ fontWeight: "700", fontSize: "1.1rem" }}>{food.name || "Food Item"}</div>
-                    <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginTop: "2px" }}>
+                    <div className="order-card-food-name">
+                      {food.name || "Food Item"}
+                    </div>
+                    <div className="order-card-partner-name">
                       From: {partner.name || "Restaurant"}
                     </div>
                   </div>
-                  <span
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: "999px",
-                      fontSize: "0.8rem",
-                      fontWeight: "700",
-                      backgroundColor: badge.bg,
-                      color: badge.color,
-                      border: badge.border,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    {badge.label}
+                  <span className={getStatusClass(order.status)}>
+                    {order.status}
                   </span>
                 </div>
 
-                <div
-                  style={{
-                    fontSize: "0.85rem",
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "8px",
-                    padding: "10px",
-                    background: "rgba(0,0,0,0.15)",
-                    borderRadius: "8px",
-                  }}
-                >
-                  <div>
-                    <span style={{ color: "#94a3b8" }}>Quantity:</span> <strong>{order.quantity}</strong>
-                  </div>
-                  <div>
-                    <span style={{ color: "#94a3b8" }}>Phone:</span> <strong>{order.contactPhone}</strong>
-                  </div>
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <span style={{ color: "#94a3b8" }}>Deliver to:</span> <span>{order.deliveryAddress}</span>
-                  </div>
+                {/* Status timeline */}
+                <div className="order-timeline">
+                  {timeline.map((step, idx) => (
+                    <React.Fragment key={step.label}>
+                      <div className={`order-timeline-step order-timeline-step--${step.state}`}>
+                        <div className="order-timeline-dot" />
+                        <span className="order-timeline-label">{step.label}</span>
+                      </div>
+                      {idx < timeline.length - 1 && (
+                        <div className={`order-timeline-line order-timeline-line--${lineStateFor(timeline, idx)}`} />
+                      )}
+                    </React.Fragment>
+                  ))}
                 </div>
 
-                {dateStr && (
-                  <div style={{ fontSize: "0.75rem", color: "#64748b", textAlign: "right" }}>
-                    Ordered: {dateStr}
+                {/* Details grid */}
+                <div className="order-card-details">
+                  <div>
+                    <span className="order-card-detail-label">Qty: </span>
+                    <strong>{order.quantity}</strong>
                   </div>
-                )}
+                  <div>
+                    <span className="order-card-detail-label">Phone: </span>
+                    <strong>{order.contactPhone}</strong>
+                  </div>
+                  <div className="order-card-detail-full">
+                    <span className="order-card-detail-label">Deliver to: </span>
+                    {order.deliveryAddress}
+                  </div>
+                  {dateStr && (
+                    <div className="order-card-timestamp">
+                      Ordered: {dateStr}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

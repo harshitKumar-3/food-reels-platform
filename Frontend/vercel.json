@@ -3,6 +3,6 @@
     { "source": "/", "destination": "/user/register" }
   ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -9,6 +9,7 @@ const CreateFood = () => {
     const [ videoFile, setVideoFile ] = useState(null);
     const [ videoURL, setVideoURL ] = useState('');
     const [ fileError, setFileError ] = useState('');
+    const [ submitError, setSubmitError ] = useState('');
     const fileInputRef = useRef(null);
 
     const navigate = useNavigate();
@@ -19,7 +20,7 @@ const CreateFood = () => {
             try {
                 await API.get("/api/auth/food-partner/profile");
             } catch (error) {
-                if (error.response?.status === 401) {
+                if (error.response?.status === 401 || error.response?.status === 403) {
                     navigate("/food-partner/login");
                 }
             }
@@ -63,24 +64,22 @@ const CreateFood = () => {
     const openFileDialog = () => fileInputRef.current?.click();
 
     const onSubmit = async (e) => {
-    e.preventDefault();
+        e.preventDefault();
 
-    const formData = new FormData();
-    formData.append('name', name);
-    formData.append('description', description);
-    formData.append('video', videoFile);
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('description', description);
+        formData.append('video', videoFile);
 
-    try {
-        const response = await API.post("/api/food", formData);
-
-        console.log(response.data);
-        navigate("/food-partner/dashboard");
-
-    } catch (error) {
-        console.error("Create food error:", error);
-        alert("Failed to upload food");
-    }
-};
+        try {
+            const response = await API.post("/api/food", formData);
+            console.log(response.data);
+            navigate("/food-partner/dashboard");
+        } catch (error) {
+            console.error("Create food error:", error);
+            setSubmitError(error.response?.data?.message || "Failed to upload food. Please try again.");
+        }
+    };
 
     const isDisabled = useMemo(() => !name.trim() || !videoFile, [ name, videoFile ]);
 
@@ -88,10 +87,21 @@ const CreateFood = () => {
         <div className="create-food-page">
             <div className="create-food-card">
                 <header className="create-food-header">
-                    <h1 className="create-food-title">Create Food</h1>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <h1 className="create-food-title" style={{ margin: 0 }}>Create Food</h1>
+                        <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={() => navigate('/food-partner/dashboard')}
+                            style={{ fontSize: '14px', padding: '6px 12px', cursor: 'pointer' }}
+                        >
+                            ← Dashboard
+                        </button>
+                    </div>
                     <p className="create-food-subtitle">Upload a short video, give it a name, and add a description.</p>
                 </header>
 
+                {submitError && <div className="error-text" style={{marginBottom: "16px"}}>{submitError}</div>}
                 <form className="create-food-form" onSubmit={onSubmit}>
                     <div className="field-group">
                         <label htmlFor="foodVideo">Food Video</label>

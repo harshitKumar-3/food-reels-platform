@@ -8,7 +8,7 @@ import ReelFeed from './ReelFeed';
 // - onClose: () => void
 // - onLike: (item) => void
 // - onSave: (item) => void
-const ReelViewer = ({ items = [], initialIndex = 0, onClose, onLike, onSave }) => {
+const ReelViewer = ({ items = [], initialIndex = 0, onClose, onLike, onSave, currentUserId, currentUserRole, onDeleteReel }) => {
   return (
     <div
       style={{
@@ -50,8 +50,12 @@ const ReelViewer = ({ items = [], initialIndex = 0, onClose, onLike, onSave }) =
 
       <ReelFeed
         items={items}
+        initialIndex={initialIndex}
         onLike={onLike}
         onSave={onSave}
+        currentUserId={currentUserId}
+        currentUserRole={currentUserRole}
+        onDeleteReel={onDeleteReel}
         emptyMessage="No reels to display"
       />
     </div>

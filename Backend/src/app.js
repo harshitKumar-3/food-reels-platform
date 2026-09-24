@@ -7,24 +7,32 @@ const cors = require("cors");
 
 const app = express();
 
-// ✅ CORS (yahan lagana hai)
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "https://food-view-eta.vercel.app"
-];
+app.set("trust proxy", 1);
 
-app.allowedOrigins = allowedOrigins;
+// ✅ CORS
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  if (origin === "https://food-view-eta.vercel.app") return true;
+  if (process.env.CLIENT_URL) {
+    const urls = process.env.CLIENT_URL.split(",").map((u) => u.trim());
+    if (urls.includes(origin)) return true;
+  }
+  if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return true;
+  return false;
+};
+app.isAllowedOrigin = isAllowedOrigin;
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("CORS not allowed"));
+      callback(null, false);
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 }));
 
 // middlewares

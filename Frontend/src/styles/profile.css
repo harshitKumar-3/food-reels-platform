@@ -1,17 +1,5 @@
 @import './theme.css';
 
-html, body {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overscroll-behavior: none; /* 🔥 stops bounce/overscroll */
-}
-
-#root {
-  height: 100%;
-  overflow-y: auto; /* ✅ allows normal scroll */
-}
-
 /* Layout container */
 .profile-page {
   max-width: 1100px;

@@ -3,15 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import API from "../../utils/api";
 import socket from '../../utils/socket';
 import '../../styles/profile.css';
+import '../../styles/orders.css';
 import ReelGrid from '../../components/ReelGrid';
 import ReelViewer from '../../components/ReelViewer';
 import logo from "../../assets/logo.png";
-
-const STATUS_BADGE = {
-    Preparing: { bg: 'rgba(234,179,8,0.15)', color: '#eab308', border: '1px solid rgba(234,179,8,0.3)' },
-    Delivered:  { bg: 'rgba(34,197,94,0.15)',  color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' },
-    Cancelled:  { bg: 'rgba(239,68,68,0.15)',   color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' },
-};
 
 const FoodPartnerDashboard = () => {
     const [foodPartner, setFoodPartner] = useState(null);
@@ -21,13 +16,14 @@ const FoodPartnerDashboard = () => {
     const [viewerOpen, setViewerOpen] = useState(false);
     const [selectedReelIndex, setSelectedReelIndex] = useState(0);
 
-    // ─── Order management state ────────────────────────────────────────────────
+    // ─── Order management state ───────────────────────────────────────────────
     const [orders, setOrders] = useState([]);
     const [statusUpdating, setStatusUpdating] = useState({}); // { [orderId]: true/false }
+    const [statusError, setStatusError] = useState({});       // { [orderId]: errorMsg }
 
     const navigate = useNavigate();
 
-    // ─── Fetch partner orders ──────────────────────────────────────────────────
+    // ─── Fetch partner orders ─────────────────────────────────────────────────
     const fetchPartnerOrders = async () => {
         try {
             const res = await API.get('/api/orders/partner');
@@ -37,9 +33,10 @@ const FoodPartnerDashboard = () => {
         }
     };
 
-    // ─── Update order status ───────────────────────────────────────────────────
+    // ─── Update order status ──────────────────────────────────────────────────
     const handleUpdateStatus = async (orderId, newStatus) => {
         setStatusUpdating((prev) => ({ ...prev, [orderId]: true }));
+        setStatusError((prev) => ({ ...prev, [orderId]: '' }));
         try {
             const res = await API.patch(`/api/orders/${orderId}/status`, { status: newStatus });
             const updated = res.data.order;
@@ -47,7 +44,8 @@ const FoodPartnerDashboard = () => {
                 prev.map((o) => (o._id === updated._id ? { ...o, ...updated } : o))
             );
         } catch (err) {
-            alert(err.response?.data?.message || 'Failed to update order status.');
+            const msg = err.response?.data?.message || 'Failed to update order status.';
+            setStatusError((prev) => ({ ...prev, [orderId]: msg }));
         } finally {
             setStatusUpdating((prev) => ({ ...prev, [orderId]: false }));
         }
@@ -89,8 +87,25 @@ const FoodPartnerDashboard = () => {
 
                 if (!isMounted) return;
 
-                setFoodItems(partnerFoodItems);
-                setTotalMeals(partnerFoodItems.length);
+                const mappedFoodItems = partnerFoodItems.map((item) => ({
+                    ...item,
+                    foodPartner: item.foodPartner && typeof item.foodPartner === 'object'
+                        ? item.foodPartner
+                        : { _id: currentPartner?._id, name: currentPartner?.name, address: currentPartner?.address },
+                    isLiked: item.isLiked !== undefined
+                        ? Boolean(item.isLiked)
+                        : (Array.isArray(item.likes) && currentPartner?._id
+                            ? item.likes.map(String).includes(String(currentPartner._id))
+                            : false),
+                    isSaved: item.isSaved !== undefined
+                        ? Boolean(item.isSaved)
+                        : (Array.isArray(item.saves) && currentPartner?._id
+                            ? item.saves.map(String).includes(String(currentPartner._id))
+                            : false),
+                }));
+
+                setFoodItems(mappedFoodItems);
+                setTotalMeals(mappedFoodItems.length);
                 setLoading(false);
 
             } catch (error) {
@@ -104,7 +119,7 @@ const FoodPartnerDashboard = () => {
                 }
 
                 if (status === 401 || status === 403) {
-                    alert("Session expired. Please login again.");
+                    
                     navigate("/food-partner/login");
                 }
 
@@ -138,18 +153,75 @@ const FoodPartnerDashboard = () => {
         }
     };
 
+    const likeVideo = async (item) => {
+        try {
+            const response = await API.post("/api/food/like", { foodId: item._id });
+            const nowLiked = response.data.like;
+            const serverLikeCount = response.data.likeCount;
+            setFoodItems(prev => prev.map(v => v._id === item._id ? {
+                ...v,
+                isLiked: nowLiked,
+                likeCount: serverLikeCount !== undefined
+                    ? serverLikeCount
+                    : (nowLiked ? (v.likeCount || 0) + 1 : Math.max(0, (v.likeCount || 0) - 1)),
+                likes: nowLiked
+                    ? [...(v.likes || []), foodPartner?._id]
+                    : (v.likes || []).filter(id => String(id) !== String(foodPartner?._id))
+            } : v));
+        } catch (error) {
+            console.error("Like error:", error);
+        }
+    };
+
+    const saveVideo = async (item) => {
+        try {
+            const response = await API.post("/api/food/save", { foodId: item._id });
+            const nowSaved = response.data.save;
+            const serverSavesCount = response.data.savesCount;
+            setFoodItems(prev => prev.map(v => v._id === item._id ? {
+                ...v,
+                isSaved: nowSaved,
+                savesCount: serverSavesCount !== undefined
+                    ? serverSavesCount
+                    : (nowSaved ? (v.savesCount || 0) + 1 : Math.max(0, (v.savesCount || 0) - 1)),
+                saves: nowSaved
+                    ? [...(v.saves || []), foodPartner?._id]
+                    : (v.saves || []).filter(id => String(id) !== String(foodPartner?._id))
+            } : v));
+        } catch (error) {
+            console.error("Save error:", error);
+        }
+    };
+
+    const deleteReel = (reelId) => {
+        setFoodItems(prev => prev.filter(v => String(v._id) !== String(reelId)));
+        setViewerOpen(false); // close the viewer when the open reel is deleted
+        setTotalMeals(prev => Math.max(0, prev - 1));
+    };
+
+    const getStatusBadgeClass = (status) => {
+        switch (status) {
+            case 'Delivered': return 'order-status-badge order-status-badge--delivered';
+            case 'Cancelled': return 'order-status-badge order-status-badge--cancelled';
+            case 'Placed':    return 'order-status-badge order-status-badge--placed';
+            case 'Preparing':
+            default:          return 'order-status-badge order-status-badge--preparing';
+        }
+    };
+
     if (loading) {
         return (
             <div className="profile-page">
-                <div style={{ textAlign: 'center', padding: '50px' }}>
-                    <p>Loading your dashboard...</p>
-                </div>
+                <div className="orders-loading">Loading your dashboard…</div>
             </div>
         );
     }
 
+    const totalLikes = foodItems.reduce((sum, item) => sum + (item.likeCount || 0), 0);
+
     return (
         <div className="profile-page">
+            {/* ─── Profile header ──────────────────────────────────────────── */}
             <section className="profile-header">
                 <div className="profile-meta">
                     <img
@@ -159,174 +231,168 @@ const FoodPartnerDashboard = () => {
                     />
 
                     <div className="profile-info">
-                        <h1 className="profile-business">{foodPartner?.name}</h1>
-                        <p className="profile-address">{foodPartner?.address}</p>
-                        <p>Contact: {foodPartner?.phone}</p>
-                        <p>Email: {foodPartner?.email}</p>
+                        <h1 className="profile-pill profile-business">
+                            {foodPartner?.name}
+                        </h1>
+                        <p className="profile-pill profile-address">
+                            {foodPartner?.address}
+                        </p>
+                        <p className="profile-pill profile-address">
+                            📞 {foodPartner?.phone}
+                        </p>
+                        <p className="profile-pill profile-address">
+                            ✉️ {foodPartner?.email}
+                        </p>
                     </div>
                 </div>
 
+                {/* Stats */}
                 <div className="profile-stats">
-                    <div>
-                        <span>Total Meals</span>
-                        <strong>{totalMeals}</strong>
+                    <div className="profile-stat">
+                        <span className="profile-stat-label">Total Meals</span>
+                        <span className="profile-stat-value">{totalMeals}</span>
                     </div>
-                    <div>
-                        <span>Total Likes</span>
-                        <strong>
-                            {foodItems.reduce((sum, item) => sum + (item.likeCount || 0), 0)}
-                        </strong>
+                    <div className="profile-stat">
+                        <span className="profile-stat-label">Total Likes</span>
+                        <span className="profile-stat-value">{totalLikes}</span>
                     </div>
                 </div>
             </section>
 
-            <div style={{ padding: '20px', textAlign: 'center' }}>
-                <button onClick={() => navigate('/create-food')}>
-                    Create Food
-                </button>
-
-                <button onClick={handleLogout} style={{ marginLeft: '10px' }}>
-                    Logout
-                </button>
+            {/* ─── Action buttons ──────────────────────────────────────────── */}
+            <div className="profile-header" style={{ padding: '16px 24px' }}>
+                <div className="dashboard-actions">
+                    <button
+                        className="dashboard-btn-primary"
+                        onClick={() => navigate('/create-food')}
+                    >
+                        + Create Food Reel
+                    </button>
+                    <button
+                        className="dashboard-btn-secondary"
+                        onClick={handleLogout}
+                    >
+                        Logout
+                    </button>
+                </div>
             </div>
 
-            <hr />
+            <hr className="profile-sep" />
 
-            {/* ─── Orders Section ────────────────────────────────────────────── */}
-            <div style={{ padding: '0 20px 30px' }}>
-                <h2>Incoming Orders ({orders.length})</h2>
+            {/* ─── Incoming Orders Section ─────────────────────────────────── */}
+            <div className="dashboard-orders-section">
+                <h2 className="dashboard-section-title">
+                    Incoming Orders
+                    <span className="dashboard-section-count">{orders.length}</span>
+                </h2>
 
                 {orders.length === 0 ? (
-                    <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
+                    <div className="dashboard-orders-empty">
                         No orders yet. Orders placed by customers will appear here in real time.
-                    </p>
+                    </div>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="orders-list">
                         {orders.map((order) => {
-                            const badge = STATUS_BADGE[order.status] || STATUS_BADGE.Preparing;
                             const food = order.food || {};
                             const customer = order.user || {};
-                            const isPreparing = order.status === 'Preparing';
                             const isUpdating = !!statusUpdating[order._id];
                             const dateStr = order.createdAt
                                 ? new Date(order.createdAt).toLocaleDateString([], {
                                     month: 'short', day: 'numeric',
                                     hour: '2-digit', minute: '2-digit',
-                                  })
+                                })
                                 : '';
 
                             return (
-                                <div
-                                    key={order._id}
-                                    style={{
-                                        background: 'var(--color-surface, #1e293b)',
-                                        border: '1px solid var(--color-border, #334155)',
-                                        borderRadius: '12px',
-                                        padding: '16px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '10px',
-                                    }}
-                                >
-                                    {/* Header row: food name + status badge */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div key={order._id} className="order-card">
+                                    {/* Header: food name + status badge */}
+                                    <div className="order-card-header">
                                         <div>
-                                            <div style={{ fontWeight: '700', fontSize: '1rem' }}>
+                                            <div className="order-card-food-name">
                                                 {food.name || 'Food Item'}
                                             </div>
-                                            <div style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: '2px' }}>
+                                            <div className="order-card-partner-name">
                                                 Customer: {customer.fullName || customer.email || 'Unknown'}
                                             </div>
                                         </div>
-                                        <span style={{
-                                            padding: '3px 10px',
-                                            borderRadius: '999px',
-                                            fontSize: '0.78rem',
-                                            fontWeight: '700',
-                                            backgroundColor: badge.bg,
-                                            color: badge.color,
-                                            border: badge.border,
-                                            whiteSpace: 'nowrap',
-                                        }}>
+                                        <span className={getStatusBadgeClass(order.status)}>
                                             {order.status}
                                         </span>
                                     </div>
 
                                     {/* Details grid */}
-                                    <div style={{
-                                        fontSize: '0.83rem',
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr',
-                                        gap: '6px',
-                                        padding: '10px',
-                                        background: 'rgba(0,0,0,0.15)',
-                                        borderRadius: '8px',
-                                    }}>
-                                        <div><span style={{ color: '#94a3b8' }}>Qty:</span> <strong>{order.quantity}</strong></div>
-                                        <div><span style={{ color: '#94a3b8' }}>Phone:</span> <strong>{order.contactPhone}</strong></div>
-                                        <div style={{ gridColumn: '1 / -1' }}>
-                                            <span style={{ color: '#94a3b8' }}>Deliver to:</span> {order.deliveryAddress}
+                                    <div className="order-card-details">
+                                        <div>
+                                            <span className="order-card-detail-label">Qty: </span>
+                                            <strong>{order.quantity}</strong>
+                                        </div>
+                                        <div>
+                                            <span className="order-card-detail-label">Phone: </span>
+                                            <strong>{order.contactPhone}</strong>
+                                        </div>
+                                        <div className="order-card-detail-full">
+                                            <span className="order-card-detail-label">Deliver to: </span>
+                                            {order.deliveryAddress}
                                         </div>
                                         {dateStr && (
-                                            <div style={{ gridColumn: '1 / -1', color: '#64748b', fontSize: '0.75rem' }}>
+                                            <div className="order-card-timestamp">
                                                 Ordered: {dateStr}
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Status action buttons — only shown while Preparing */}
-                                    {isPreparing && (
-                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                    {/* Status action buttons */}
+                                    {order.status === 'Placed' && (
+                                        <div className="order-card-actions">
                                             <button
+                                                className="order-action-btn order-action-btn--prepare"
                                                 disabled={isUpdating}
-                                                onClick={() => handleUpdateStatus(order._id, 'Delivered')}
-                                                style={{
-                                                    flex: 1,
-                                                    padding: '8px',
-                                                    borderRadius: '8px',
-                                                    border: 'none',
-                                                    background: 'rgba(34,197,94,0.2)',
-                                                    color: '#22c55e',
-                                                    fontWeight: '700',
-                                                    cursor: isUpdating ? 'not-allowed' : 'pointer',
-                                                    opacity: isUpdating ? 0.6 : 1,
-                                                    fontSize: '0.85rem',
-                                                }}
+                                                onClick={() => handleUpdateStatus(order._id, 'Preparing')}
                                             >
-                                                {isUpdating ? 'Updating...' : '✓ Delivered'}
-                                            </button>
-                                            <button
-                                                disabled={isUpdating}
-                                                onClick={() => handleUpdateStatus(order._id, 'Cancelled')}
-                                                style={{
-                                                    flex: 1,
-                                                    padding: '8px',
-                                                    borderRadius: '8px',
-                                                    border: 'none',
-                                                    background: 'rgba(239,68,68,0.15)',
-                                                    color: '#ef4444',
-                                                    fontWeight: '700',
-                                                    cursor: isUpdating ? 'not-allowed' : 'pointer',
-                                                    opacity: isUpdating ? 0.6 : 1,
-                                                    fontSize: '0.85rem',
-                                                }}
-                                            >
-                                                {isUpdating ? 'Updating...' : '✕ Cancel'}
+                                                {isUpdating ? 'Updating…' : '🍳 Mark as Preparing'}
                                             </button>
                                         </div>
+                                    )}
+
+                                    {order.status === 'Preparing' && (
+                                        <div className="order-card-actions">
+                                            <button
+                                                className="order-action-btn order-action-btn--deliver"
+                                                disabled={isUpdating}
+                                                onClick={() => handleUpdateStatus(order._id, 'Delivered')}
+                                            >
+                                                {isUpdating ? 'Updating…' : '✓ Mark Delivered'}
+                                            </button>
+                                            <button
+                                                className="order-action-btn order-action-btn--cancel"
+                                                disabled={isUpdating}
+                                                onClick={() => handleUpdateStatus(order._id, 'Cancelled')}
+                                            >
+                                                {isUpdating ? 'Updating…' : '✕ Cancel Order'}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Inline error if status update failed */}
+                                    {statusError[order._id] && (
+                                        <p className="order-card-error">{statusError[order._id]}</p>
                                     )}
                                 </div>
                             );
                         })}
                     </div>
                 )}
+
             </div>
 
-            <hr />
+            <hr className="profile-sep" />
 
-            {/* ─── Food Reels Section ────────────────────────────────────────── */}
+            {/* ─── Food Reels Section ───────────────────────────────────────── */}
             <div style={{ padding: '0 20px' }}>
-                <h2>Your Food Reels ({foodItems.length})</h2>
+                <h2 className="dashboard-section-title">
+                    Your Food Reels
+                    <span className="dashboard-section-count">{foodItems.length}</span>
+                </h2>
 
                 <ReelGrid
                     items={foodItems}
@@ -343,6 +409,11 @@ const FoodPartnerDashboard = () => {
                     items={foodItems}
                     initialIndex={selectedReelIndex}
                     onClose={() => setViewerOpen(false)}
+                    onLike={likeVideo}
+                    onSave={saveVideo}
+                    currentUserId={foodPartner?._id}
+                    currentUserRole="food-partner"
+                    onDeleteReel={deleteReel}
                 />
             )}
         </div>

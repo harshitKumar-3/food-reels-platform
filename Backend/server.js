@@ -11,15 +11,16 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      const allowed = app.allowedOrigins || [
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "https://food-view-eta.vercel.app"
-      ];
-      if (!origin || allowed.includes(origin)) {
+      const checkOrigin = app.isAllowedOrigin || ((o) => {
+        if (!o) return true;
+        if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)) return true;
+        if (o === "https://food-view-eta.vercel.app") return true;
+        return false;
+      });
+      if (checkOrigin(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("CORS not allowed for Socket.IO"));
+        callback(null, false);
       }
     },
     credentials: true,

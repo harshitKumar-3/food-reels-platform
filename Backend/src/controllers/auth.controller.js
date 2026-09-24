@@ -2,10 +2,11 @@ const userModel = require("../models/user.model");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const foodPartnerModel = require("../models/foodpartner.model");
+const isProduction = process.env.NODE_ENV === "production";
 const cookieOptions = {
   httpOnly: true,
-  secure: false,
-  sameSite: "lax",
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   maxAge: 7 * 24 * 60 * 60 * 1000
 };
 
@@ -218,12 +219,19 @@ async function getCurrentUser(req, res) {
   try {
     const user = req.user;
 
+    // authAnyMiddleware sets req.user for both user and food-partner tokens.
+    // For food-partners: user.fullName is undefined, user.name is the business name.
+    // We need to return the role so frontend can distinguish.
+    const isFoodPartner = !!req.foodPartner; // authAnyMiddleware sets this for partners
+
     res.status(200).json({
       message: "Current user profile fetched successfully",
       user: {
         _id: user._id,
         email: user.email,
-        fullName: user.fullName,
+        fullName: user.fullName || null,       // null for food-partners
+        name: user.name || null,               // business name for food-partners
+        role: isFoodPartner ? "food-partner" : "user",
       },
     });
   } catch (error) {
